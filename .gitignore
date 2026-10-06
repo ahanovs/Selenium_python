@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Отчёты и артефакты прогонов
+reports/
+allure-results/
+allure-report/
+screenshots/
+logs/
+
+# IDE
+.idea/
+.vscode/
