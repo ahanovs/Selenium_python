@@ -1,0 +1,85 @@
+# Отдельная охота на флейки: тот же pytest, но каждый тест ×3 без ослаблений.
+# Обычный CI показывает «зелёный прогон», а здесь задача наоборот — поймать
+# нестабильный тест и не дать ему спрятаться.
+name: Stability Check
+
+on:
+  # Кнопка «Run workflow» во вкладке Actions — запуск вручную в любой момент.
+  workflow_dispatch:
+  # Плановая проверка: каждый понедельник в 06:00 UTC (09:00 МСК).
+  # Расписание исполняется только для workflow на ветке по умолчанию.
+  schedule:
+    - cron: "0 6 * * 1"
+
+# Новый запуск отменяет ещё не закончившийся предыдущий.
+concurrency:
+  group: stability-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stability:
+    name: pytest stability (каждый тест ×3)
+    # Тройной прогон браузерных тестов против живого стенда требует времени.
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      # `--count 3` (pytest-repeat): каждый тест прогоняется трижды в одной сессии,
+      # фикстура драйвера создаётся заново на каждый повтор. Никаких retries —
+      # упавший хоть раз повтор валит workflow, нестабильность нельзя спрятать.
+      - name: Run pytest three times
+        id: pytest
+        env:
+          HEADLESS: "1"
+        run: |
+          set +e
+          python -m pytest tests/ --count 3 -q --junitxml=reports/stability-junit.xml
+          code=$?
+          if [ "$code" -eq 5 ]; then
+            echo "Тестов пока нет (pytest exit 5) — stability-проверке нечего гонять."
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Write stability summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## 🧪 Stability Check"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| 🌿 Ветка | \`${{ github.ref_name }}\` |"
+            echo "| 📦 Коммит | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |"
+            echo "| 🔁 Режим | каждый тест × 3, без retry |"
+            echo ""
+            if [ "${{ steps.pytest.conclusion }}" = "success" ]; then
+              echo "✅ Все тесты прошли трижды подряд — флейков не найдено."
+            else
+              echo "❌ Найден нестабильный тест: упал хотя бы в одном из трёх прогонов."
+              echo "По правилам CODEX свой флак чинит автор."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload junit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: stability-report-${{ github.run_id }}
+          path: reports/
+          retention-days: 14
+          if-no-files-found: ignore

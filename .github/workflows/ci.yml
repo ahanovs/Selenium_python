@@ -1,0 +1,220 @@
+# Имя workflow — так он отображается во вкладке Actions.
+name: Selenium CI
+
+# События, которые запускают проверки.
+on:
+  push:
+    branches: [main]
+  # Проверяем каждое изменение до слияния через Pull Request.
+  pull_request:
+    # `main` здесь — целевая ветка PR, а не имя рабочей ветки.
+    branches: [main]
+  # Кнопка ручного запуска во вкладке Actions.
+  workflow_dispatch:
+
+# Новый пуш в ту же ветку отменяет ещё не закончившийся старый прогон.
+concurrency:
+  group: selenium-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# От дешёвого к дорогому: линт без браузера → pytest + Selenium против живого
+# стенда → сводка и Telegram.
+jobs:
+  # 1. Lint — ruff. Браузер не нужен, джоба собирается быстрее остальных.
+  lint:
+    name: Lint (ruff)
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          # Версия проекта (README): Python 3.10.
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Ruff
+        run: python -m ruff check .
+
+  # 2. Tests — pytest + Selenium. Chrome предустановлен на ubuntu-latest,
+  # подходящий драйвер скачает Selenium Manager.
+  tests:
+    name: Tests (pytest + Selenium)
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run pytest
+        id: pytest
+        env:
+          # Фикстура драйвера читает HEADLESS: на CI браузер всегда безголовый.
+          HEADLESS: "1"
+        run: |
+          set +e
+          python -m pytest tests/ --junitxml=reports/junit.xml -q
+          code=$?
+          # 5 = no tests collected. На старте проекта набор пуст — это штатный
+          # этап, а не ошибка; CI остаётся зелёным до первого кейса.
+          if [ "$code" -eq 5 ]; then
+            echo "Тестов пока нет (pytest exit 5) — ждём первый кейс."
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Upload junit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-report-${{ github.run_id }}
+          path: reports/junit.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # 3. Summary & Notify — итоговая страница запуска и Telegram-уведомление.
+  # Собирает статусы всех проверок, даже когда что-то упало или не стартовало.
+  summary:
+    name: Summary & Notify
+    needs: [lint, tests]
+    # `always()` — джоба получает слово и после падения, и после отмены соседей.
+    if: ${{ always() }}
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+
+    # contents нужен для checkout, actions — за run_duration_ms для Telegram.
+    permissions:
+      contents: read
+      actions: read
+
+    env:
+      # Секреты пробрасываются на уровне job, чтобы шаг мог проверить их наличие
+      # и тихо пропуститься, пока Telegram-бот не подключен.
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download junit report
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: junit-report-${{ github.run_id }}
+          path: reports
+
+      - name: Collect test counts
+        if: ${{ always() }}
+        id: counts
+        run: echo "counts=$(python scripts/junit_counts.py reports/junit.xml)" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        if: ${{ always() }}
+        run: |
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          status_emoji() {
+            case "$1" in
+              success)   echo "✅" ;;
+              failure)   echo "❌" ;;
+              cancelled) echo "🚫" ;;
+              skipped)   echo "⏭" ;;
+              *)         echo "❔" ;;
+            esac
+          }
+
+          {
+            echo "## 🕷️ Selenium Portfolio CI Summary"
+            echo ""
+            echo "| Проверка | Статус |"
+            echo "| --- | --- |"
+            echo "| Lint (ruff) | $(status_emoji '${{ needs.lint.result }}') \`${{ needs.lint.result }}\` |"
+            echo "| Tests (pytest + Selenium) | $(status_emoji '${{ needs.tests.result }}') \`${{ needs.tests.result }}\` |"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| 🧪 Тесты | ${{ steps.counts.outputs.counts }} |"
+            echo "| 🌿 Ветка | \`${{ github.ref_name }}\` |"
+            echo "| 📦 Коммит | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |"
+            echo "| 👤 Автор | ${{ github.actor }} |"
+            echo "| ⚡ Событие | \`${{ github.event_name }}\` |"
+            echo ""
+            echo "▶️ [Полный лог запуска]($run_url)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Send Telegram notification
+        # Пока секреты не заданы, шаг просто пропускается — CI от этого не краснеет.
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        run: |
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          status_emoji() {
+            case "$1" in
+              success)   echo "✅" ;;
+              failure)   echo "❌" ;;
+              cancelled) echo "🚫" ;;
+              skipped)   echo "⏭" ;;
+              *)         echo "❔" ;;
+            esac
+          }
+
+          # Общее время прогона. Поле run_duration_ms у идущего прогона равно нулю —
+          # GitHub заполняет его только после завершения, а Telegram-шаг выполняется
+          # до этого. Поэтому считаем сами: run_started_at до текущего момента.
+          duration_line=""
+          http_code="$(curl -s -o /tmp/run.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true)"
+          echo "actions API: HTTP $http_code"
+          run_started_at="$(jq -r '.run_started_at // empty' /tmp/run.json 2>/dev/null || true)"
+          if [ -n "$run_started_at" ]; then
+            elapsed=$(( $(date +%s) - $(date -d "$run_started_at" +%s) ))
+            duration_line="⏱ Прогон: $(( elapsed / 60 )) мин $(( elapsed % 60 )) с"
+          fi
+
+          text="🕷️ Selenium Portfolio CI — $( [ '${{ needs.lint.result }}' = 'success' ] && [ '${{ needs.tests.result }}' = 'success' ] && echo 'всё зелёное ✅' || echo 'есть проблемы ❌' )
+          🌿 Ветка: ${{ github.ref_name }}
+          📦 Коммит: ${GITHUB_SHA::7}
+          👤 Автор: ${{ github.actor }}
+          ${duration_line}
+
+          $(status_emoji '${{ needs.lint.result }}') Lint (ruff)
+          $(status_emoji '${{ needs.tests.result }}') Tests (pytest + Selenium)
+          🧪 ${{ steps.counts.outputs.counts }}"
+
+          # jq собирает корректный JSON: значения подставляются как экранированные строки.
+          payload="$(jq -n \
+            --arg chat_id "$TELEGRAM_CHAT_ID" \
+            --arg text "$text" \
+            --arg url "$run_url" \
+            '{chat_id: $chat_id, text: $text, disable_web_page_preview: true,
+              reply_markup: {inline_keyboard: [[{text: "Открыть запуск", url: $url}]]}}')"
+
+          # `-f` превращает HTTP-ошибку Telegram в падение шага.
+          curl -sf -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
