@@ -1,0 +1,20 @@
+#!/bin/sh
+# Pre-push gate: линт + тесты перед отправкой (CODEX.md, пункт 11).
+# Активация (один раз на клон): git config core.hooksPath .githooks
+
+echo "→ ruff check ."
+python -m ruff check . || {
+  echo "Пуш заблокирован: линт красный. Почини и попробуй снова."
+  exit 1
+}
+
+echo "→ pytest"
+python -m pytest tests/ -q
+code=$?
+# 5 = no tests collected: набор пока пуст, это штатный этап проекта.
+if [ "$code" -ne 0 ] && [ "$code" -ne 5 ]; then
+  echo "Пуш заблокирован: тесты красные. Отдаём только зелёные (CODEX.md)."
+  exit 1
+fi
+
+echo "Проверки зелёные — пуш можно выполнять."
