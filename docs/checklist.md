@@ -1,6 +1,7 @@
-# Чеклист — [название приложения]
+# Чеклист — XPath Practice Hub (ThreadQA)
 
-> Приложение под тест: **TBD** — заполнить до старта дизайна.
+> Приложение под тест: **ThreadQA XPath Practice Hub** — https://lms.threadqa.ru/xpath-practice-hub
+> Карта страниц и замеры локаторов — в PROJECT.md скилла `ai-cheklistyor` (`.zcode/skills/`).
 
 ## Правила работы с этим файлом
 
