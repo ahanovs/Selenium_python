@@ -1,5 +1,6 @@
 """Общие фикстуры: Chrome-драйвер и открытие страницы стенда."""
 
+import json
 import os
 
 import pytest
@@ -22,6 +23,14 @@ def pytest_runtest_makereport(item, call):
         base = os.path.join("reports", f"fail-{item.name}")
         try:
             driver.save_screenshot(base + ".png")
+            metrics = driver.execute_script(
+                "return {innerWidth: innerWidth, innerHeight: innerHeight,"
+                " dpr: devicePixelRatio, scrollY: scrollY,"
+                " scrollHeight: document.documentElement.scrollHeight,"
+                " ua: navigator.userAgent}"
+            )
+            with open(base + ".json", "w", encoding="utf-8") as f:
+                json.dump(metrics, f, ensure_ascii=False, indent=1)
             with open(base + ".html", "w", encoding="utf-8") as f:
                 f.write(driver.page_source)
         except WebDriverException as error:
