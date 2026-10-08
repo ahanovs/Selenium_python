@@ -5,12 +5,13 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Отчёты и артефакты прогонов
+# Артефакты прогонов
 reports/
 allure-results/
 allure-report/
 screenshots/
 logs/
+*.log
 
 # IDE
 .idea/
