@@ -134,7 +134,13 @@ jobs:
       - name: Collect test counts
         if: ${{ always() }}
         id: counts
-        run: echo "counts=$(python scripts/junit_counts.py reports/junit.xml)" >> "$GITHUB_OUTPUT"
+        run: |
+          # Структура каталогов скачанного артефакта не гарантирована —
+          # ищем junit.xml рекурсивно и показываем, что нашли.
+          junit="$(find reports -name 'junit.xml' 2>/dev/null | head -1 || true)"
+          echo "junit: ${junit:-не найден}"
+          ls -R reports 2>/dev/null | head -20 || true
+          echo "counts=$(python scripts/junit_counts.py "${junit:-/dev/null}")" >> "$GITHUB_OUTPUT"
 
       - name: Compute run duration
         if: ${{ always() }}

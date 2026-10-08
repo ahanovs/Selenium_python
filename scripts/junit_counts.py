@@ -16,11 +16,22 @@ def main() -> None:
         print("отчёта нет — тесты не запускались или набор пуст")
         return
 
-    tests = root.get("tests", "0")
-    failures = root.get("failures", "0")
-    errors = root.get("errors", "0")
-    skipped = root.get("skipped", "0")
-    print(f"{tests} тестов: {failures} падений, {errors} ошибок, {skipped} пропущено")
+    suite = root if root.tag == "testsuite" else root.find("testsuite")
+    if suite is None:
+        print("отчёта нет — неожиданный формат junit")
+        return
+
+    tests = int(suite.get("tests", "0"))
+    failures = int(suite.get("failures", "0"))
+    errors = int(suite.get("errors", "0"))
+    skipped = int(suite.get("skipped", "0"))
+
+    if tests == 0:
+        print("набор пуст (0 тестов)")
+        return
+
+    passed = tests - failures - errors - skipped
+    print(f"прошло {passed} из {tests}: падений {failures}, ошибок {errors}, пропущено {skipped}")
 
 
 if __name__ == "__main__":
