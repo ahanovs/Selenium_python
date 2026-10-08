@@ -1,5 +1,7 @@
 # Selenium Portfolio
 
+[![Selenium CI](https://github.com/ahanovs/Selenium_python/actions/workflows/ci.yml/badge.svg)](https://github.com/ahanovs/Selenium_python/actions/workflows/ci.yml)
+
 Второй пет-проект в портфолио fullstack QA: UI-автотесты на Python + Selenium.
 Первый проект — pomidorqa-course-tests (Playwright + TypeScript).
 

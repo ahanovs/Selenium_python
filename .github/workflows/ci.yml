@@ -11,6 +11,10 @@ on:
     branches: [main]
   # Кнопка ручного запуска во вкладке Actions.
   workflow_dispatch:
+  # Ночной регресс: стенд живой, расписание ловит его дрейф (смену текстов,
+  # разметки) до того, как с ним столкнётся человек. Пн–пт 05:00 МСК.
+  schedule:
+    - cron: "0 2 * * 1-5"
 
 # Новый пуш в ту же ветку отменяет ещё не закончившийся старый прогон.
 concurrency:
@@ -132,6 +136,24 @@ jobs:
         id: counts
         run: echo "counts=$(python scripts/junit_counts.py reports/junit.xml)" >> "$GITHUB_OUTPUT"
 
+      - name: Compute run duration
+        if: ${{ always() }}
+        id: duration
+        run: |
+          # run_duration_ms у идущего прогона равен нулю — GitHub заполняет его
+          # только после завершения, поэтому считаем сами: start до текущего момента.
+          duration_line=""
+          http_code="$(curl -s -o /tmp/run.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true)"
+          echo "actions API: HTTP $http_code"
+          run_started_at="$(jq -r '.run_started_at // empty' /tmp/run.json 2>/dev/null || true)"
+          if [ -n "$run_started_at" ]; then
+            elapsed=$(( $(date +%s) - $(date -d "$run_started_at" +%s) ))
+            duration_line="⏱ Прогон: $(( elapsed / 60 )) мин $(( elapsed % 60 )) с"
+          fi
+          echo "line=$duration_line" >> "$GITHUB_OUTPUT"
+
       - name: Write job summary
         if: ${{ always() }}
         run: |
@@ -158,6 +180,7 @@ jobs:
             echo "| | |"
             echo "| --- | --- |"
             echo "| 🧪 Тесты | ${{ steps.counts.outputs.counts }} |"
+            echo "| ⏱ Длительность | ${{ steps.duration.outputs.line }} |"
             echo "| 🌿 Ветка | \`${{ github.ref_name }}\` |"
             echo "| 📦 Коммит | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |"
             echo "| 👤 Автор | ${{ github.actor }} |"
@@ -182,19 +205,7 @@ jobs:
             esac
           }
 
-          # Общее время прогона. Поле run_duration_ms у идущего прогона равно нулю —
-          # GitHub заполняет его только после завершения, а Telegram-шаг выполняется
-          # до этого. Поэтому считаем сами: run_started_at до текущего момента.
-          duration_line=""
-          http_code="$(curl -s -o /tmp/run.json -w '%{http_code}' \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true)"
-          echo "actions API: HTTP $http_code"
-          run_started_at="$(jq -r '.run_started_at // empty' /tmp/run.json 2>/dev/null || true)"
-          if [ -n "$run_started_at" ]; then
-            elapsed=$(( $(date +%s) - $(date -d "$run_started_at" +%s) ))
-            duration_line="⏱ Прогон: $(( elapsed / 60 )) мин $(( elapsed % 60 )) с"
-          fi
+          duration_line="${{ steps.duration.outputs.line }}"
 
           text="🕷️ Selenium Portfolio CI — $( [ '${{ needs.lint.result }}' = 'success' ] && [ '${{ needs.tests.result }}' = 'success' ] && echo 'всё зелёное ✅' || echo 'есть проблемы ❌' )
           🌿 Ветка: ${{ github.ref_name }}
