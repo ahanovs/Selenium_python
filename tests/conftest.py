@@ -4,8 +4,29 @@ import os
 
 import pytest
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 
 from pages.basic_elements_page import BasicElementsPage
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Скриншот и HTML-дамп страницы при падении теста — в reports/."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when == "call" and report.failed:
+        driver = item.funcargs.get("driver")
+        if driver is None:
+            return
+        os.makedirs("reports", exist_ok=True)
+        base = os.path.join("reports", f"fail-{item.name}")
+        try:
+            driver.save_screenshot(base + ".png")
+            with open(base + ".html", "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+        except WebDriverException as error:
+            # Дамп не должен маскировать исходное падение теста.
+            print(f"не удалось сохранить дамп падения: {error}")
 
 
 @pytest.fixture
