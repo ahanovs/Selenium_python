@@ -63,8 +63,14 @@ class BasicElementsPage:
 
     def _element(self, locator):
         # Eager-загрузка возвращает управление до монтирования JS-компонентов,
-        # поэтому любое обращение к элементу ждёт его видимости.
-        return self.wait.until(EC.visibility_of_element_located(locator))
+        # поэтому любое обращение к элементу ждёт его видимости. Центрируем
+        # прокруткой: вьюпорт на CI ~578px, а липкая шапка сайта перехватывает
+        # клики по элементам, оставшимся у верхнего края.
+        element = self.wait.until(EC.visibility_of_element_located(locator))
+        self.driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center'});", element
+        )
+        return element
 
     def _type(self, locator, value):
         field = self.wait.until(EC.element_to_be_clickable(locator))
