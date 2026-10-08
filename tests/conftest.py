@@ -15,6 +15,10 @@ def driver():
     options.page_load_strategy = "eager"
     if os.environ.get("HEADLESS") == "1":
         options.add_argument("--headless=new")
+    # На CI-раннере (Linux, ограниченный /dev/shm) Chrome без этих флагов
+    # не стартует вовсе; на Windows они безвредны.
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
     # Контракт для координатных кликов TC-011/TC-012 (фон модалки — точка
     # (200, 500) валидна именно при этом окне); не менять независимо от тестов.
     options.add_argument("--window-size=1280,720")
