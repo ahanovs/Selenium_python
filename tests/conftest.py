@@ -40,12 +40,21 @@ def driver():
     # не стартует вовсе; на Windows они безвредны.
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # Контракт для координатных кликов TC-011/TC-012 (фон модалки — точка
-    # (200, 500) валидна именно при этом окне); не менять независимо от тестов.
+    # Контракт координатных кликов TC-011/TC-012: фон модалки — точка
+    # (200, 500), валидна при вьюпорте 1280×1600. Не менять независимо
+    # от тестов; комментарии к координатам — в PROJECT.md ai-cheklistyor.
     options.add_argument("--window-size=1280,720")
     driver = webdriver.Chrome(options=options)
     try:
         driver.set_window_size(1280, 720)
+        # Вьюпорт фиксируем через CDP: на CI-раннере оконный размер ненадёжен
+        # (фактическая высота выходила ~578px, страница не прокручивалась,
+        # элементы ниже 578px были недостижимы). 1600px — вся форма видна
+        # целиком, тесты не зависят от прокрутки и липкой шапки.
+        driver.execute_cdp_cmd(
+            "Emulation.setDeviceMetricsOverride",
+            {"mobile": False, "width": 1280, "height": 1600, "deviceScaleFactor": 1},
+        )
         BasicElementsPage(driver).open()
         yield driver
     finally:
