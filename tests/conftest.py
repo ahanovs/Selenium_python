@@ -1,11 +1,12 @@
-"""Общие фикстуры: Chrome-драйвер и открытие страницы стенда."""
+"""Общие фикстуры: Chrome-драйвер, каталог загрузок, открытие страницы стенда."""
 
 import json
 import os
+import re
+import tempfile
 
 import pytest
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
 
 from pages.basic_elements_page import BasicElementsPage
 
@@ -19,8 +20,11 @@ def pytest_runtest_makereport(item, call):
         driver = item.funcargs.get("driver")
         if driver is None:
             return
+        # Имя теста содержит юникод и скобки параметризации — санитизируем
+        # для файловой системы. Хук не имеет права уронить прогон.
+        safe = re.sub(r"[^\w.-]+", "_", item.name)
         os.makedirs("reports", exist_ok=True)
-        base = os.path.join("reports", f"fail-{item.name}")
+        base = os.path.join("reports", f"fail-{safe}")
         try:
             driver.save_screenshot(base + ".png")
             metrics = driver.execute_script(
@@ -33,13 +37,18 @@ def pytest_runtest_makereport(item, call):
                 json.dump(metrics, f, ensure_ascii=False, indent=1)
             with open(base + ".html", "w", encoding="utf-8") as f:
                 f.write(driver.page_source)
-        except WebDriverException as error:
-            # Дамп не должен маскировать исходное падение теста.
+        except Exception as error:  # noqa: BLE001 — дамп не должен маскировать падение
             print(f"не удалось сохранить дамп падения: {error}")
 
 
 @pytest.fixture
-def driver():
+def download_dir():
+    """Чистый каталог загрузок для тестов скачивания (TC-024)."""
+    return tempfile.mkdtemp(prefix="selenium-downloads-")
+
+
+@pytest.fixture
+def driver(download_dir):
     options = webdriver.ChromeOptions()
     # Полная загрузка страницы тяжёлая (шрифты, анимации) — достаточно DOM.
     options.page_load_strategy = "eager"
@@ -53,6 +62,14 @@ def driver():
     # (200, 500), валидна при вьюпорте 1280×1600. Не менять независимо
     # от тестов; комментарии к координатам — в PROJECT.md ai-cheklistyor.
     options.add_argument("--window-size=1280,720")
+    # Файлы скачиваются без диалога в чистый каталог теста (TC-024).
+    options.add_experimental_option(
+        "prefs",
+        {
+            "download.default_directory": download_dir,
+            "download.prompt_for_download": False,
+        },
+    )
     driver = webdriver.Chrome(options=options)
     try:
         driver.set_window_size(1280, 720)
