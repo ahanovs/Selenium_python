@@ -58,7 +58,10 @@ https://lms.threadqa.ru/xpath-practice-hub
 
 - `pip install -r requirements.txt`
 - `python -m ruff check .` — линт
-- `python -m pytest tests/ -q` — тесты
+- `python -m pytest tests/ -q` — тесты (~20 минут на ноутбуке: живой стенд + Chrome
+  на каждый тест). pytest-xdist установлен: на мощном железе можно добавить `-n 3`
+  (~8 минут), но на ноутбуке параллельный прогон не тянет — 3 Chrome голодают и
+  сыплются по таймаутам (проверено 2026-10-09), поэтому по умолчанию последовательно
 - `git config core.hooksPath .githooks` — включить pre-push гейт на клоне
 
 ## Статус
