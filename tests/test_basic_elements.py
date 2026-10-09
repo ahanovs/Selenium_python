@@ -124,17 +124,15 @@ class TestBasicElements:
         """TC-009: «Показать уведомление» показывает блок на странице."""
         page = BasicElementsPage(driver)
         with allure.step("Кликаем «Показать уведомление»"):
-            page.click_show_notification()
+            heading = page.click_show_notification_and_wait()
         with allure.step("Блок с заголовком «Информационное сообщение» отображается"):
-            heading = page.wait_notification_shown()
             assert "Информационное сообщение" in heading.text
 
     def test_tc010_notification_block_toggle(self, driver):
         """TC-010: повторное нажатие снимает блок (текущее поведение стенда)."""
         page = BasicElementsPage(driver)
         with allure.step("Показываем блок"):
-            page.click_show_notification()
-            page.wait_notification_shown()
+            page.click_show_notification_and_wait()
         with allure.step("Повторный клик — блок исчезает со страницы"):
             page.click_show_notification()
             page.wait_notification_hidden()

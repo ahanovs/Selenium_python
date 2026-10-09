@@ -198,8 +198,12 @@ class BasicElementsPage:
     def click_show_notification(self):
         self._element(self.SHOW_NOTIFICATION).click()
 
-    def wait_notification_shown(self):
-        return self.wait.until(EC.visibility_of_element_located(self.NOTIFICATION_HEADING))
+    def click_show_notification_and_wait(self):
+        """Кликает «Показать уведомление» и ждёт появления блока (с повтором)."""
+        return self._click_with_effect(
+            self.SHOW_NOTIFICATION,
+            EC.visibility_of_element_located(self.NOTIFICATION_HEADING),
+        )
 
     def wait_notification_hidden(self):
         return self.wait.until(EC.invisibility_of_element_located(self.NOTIFICATION_HEADING))
