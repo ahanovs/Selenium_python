@@ -140,7 +140,10 @@ jobs:
           junit="$(find reports -name 'junit.xml' 2>/dev/null | head -1 || true)"
           echo "junit: ${junit:-не найден}"
           ls -R reports 2>/dev/null | head -20 || true
-          echo "counts=$(python scripts/junit_counts.py "${junit:-/dev/null}")" >> "$GITHUB_OUTPUT"
+          counts="$(python scripts/junit_counts.py --failures "${junit:-/dev/null}")"
+          echo "counts<<COUNTS_EOF" >> "$GITHUB_OUTPUT"
+          echo "$counts" >> "$GITHUB_OUTPUT"
+          echo "COUNTS_EOF" >> "$GITHUB_OUTPUT"
 
       - name: Compute run duration
         if: ${{ always() }}
@@ -185,8 +188,10 @@ jobs:
             echo ""
             echo "| | |"
             echo "| --- | --- |"
-            echo "| 🧪 Тесты | ${{ steps.counts.outputs.counts }} |"
+            echo "| 🧪 Тесты | $(echo "${{ steps.counts.outputs.counts }}" | head -1) |"
             echo "| ⏱ Длительность | ${{ steps.duration.outputs.line }} |"
+            echo ""
+            echo "${{ steps.counts.outputs.counts }}"
             echo "| 🌿 Ветка | \`${{ github.ref_name }}\` |"
             echo "| 📦 Коммит | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |"
             echo "| 👤 Автор | ${{ github.actor }} |"
@@ -212,6 +217,7 @@ jobs:
           }
 
           duration_line="${{ steps.duration.outputs.line }}"
+          failed_details="${{ steps.counts.outputs.counts }}"
 
           text="🕷️ Selenium Portfolio CI — $( [ '${{ needs.lint.result }}' = 'success' ] && [ '${{ needs.tests.result }}' = 'success' ] && echo 'всё зелёное ✅' || echo 'есть проблемы ❌' )
           🌿 Ветка: ${{ github.ref_name }}
@@ -221,7 +227,7 @@ jobs:
 
           $(status_emoji '${{ needs.lint.result }}') Lint (ruff)
           $(status_emoji '${{ needs.tests.result }}') Tests (pytest + Selenium)
-          🧪 ${{ steps.counts.outputs.counts }}"
+          ${failed_details}"
 
           # jq собирает корректный JSON: значения подставляются как экранированные строки.
           payload="$(jq -n \
