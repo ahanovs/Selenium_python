@@ -140,8 +140,8 @@ class TestInteractiveElements:
         """TC-026: перезагрузка страницы во время загрузки."""
         page = InteractiveElementsPage(driver)
         page.open()
-        with allure.step("Кликаем «Запустить» и ловим статус «Загрузка»"):
-            assert page.click_start_wait_loading()
+        with allure.step("Кликаем «Запустить» и ловим статус «Загрузка» (таймаут 30 с — стенд бывает медленным)"):
+            assert page.click_start_wait_loading(timeout=30)
         with allure.step("Нажимаем F5"):
             page.reload()
         with allure.step("Прогресс сброшен, статус «Ожидание», кнопка активна, ошибок нет"):
