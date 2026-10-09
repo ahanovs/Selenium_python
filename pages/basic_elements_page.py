@@ -5,8 +5,10 @@
 локатора нет (тосты, оверлей модалки), описаны в PROJECT.md ai-cheklistyor.
 """
 
+import time
 from typing import ClassVar
 
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -72,6 +74,23 @@ class BasicElementsPage:
         )
         return element
 
+    def _click_with_effect(self, locator, effect, timeout=15):
+        """Клик с повтором по эффекту для непрогретого стенда.
+
+        Первый клик может уйти до гидратации React (обработчиков ещё нет,
+        элемент виден, но не отвечает). Оракул — появление эффекта; клик
+        повторяется, пока не выйдет общий таймаут, после чего исключение
+        уходит тесту (CODEX.md, раздел 8).
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            self._element(locator).click()
+            try:
+                return WebDriverWait(self.driver, 3).until(effect)
+            except TimeoutException:
+                if time.monotonic() >= deadline:
+                    raise
+
     def _type(self, locator, value):
         field = self.wait.until(EC.element_to_be_clickable(locator))
         field.send_keys(value)
@@ -120,8 +139,10 @@ class BasicElementsPage:
 
     def open_country_list(self):
         if not self.driver.find_elements(*self.COUNTRY_OPTION):
-            self._element(self.COUNTRY_DROPDOWN).click()
-            self.wait.until(EC.visibility_of_element_located(self.COUNTRY_OPTION))
+            self._click_with_effect(
+                self.COUNTRY_DROPDOWN,
+                EC.visibility_of_element_located(self.COUNTRY_OPTION),
+            )
 
     def country_options(self):
         return [option.text.strip() for option in self.driver.find_elements(*self.COUNTRY_OPTION)]
@@ -165,16 +186,14 @@ class BasicElementsPage:
 
     # --- тосты и блок уведомления ---
 
-    def click_notify_button(self, name):
-        self._element(self.NOTIFY_BUTTONS[name]).click()
-
-    def wait_toast(self, text):
-        message = self.wait.until(
+    def click_notify_button_and_wait(self, name, text):
+        """Кликает кнопку тоста и ждёт его появление (с повтором клика)."""
+        return self._click_with_effect(
+            self.NOTIFY_BUTTONS[name],
             EC.visibility_of_element_located(
                 (By.XPATH, f"//p[contains(normalize-space(), '{text}')]")
-            )
+            ),
         )
-        return message
 
     def click_show_notification(self):
         self._element(self.SHOW_NOTIFICATION).click()

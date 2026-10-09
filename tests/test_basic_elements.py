@@ -116,9 +116,8 @@ class TestBasicElements:
         """TC-008: тост каждого типа появляется по своей кнопке."""
         page = BasicElementsPage(driver)
         with allure.step(f"Кликаем кнопку «{button_name}» в разделе «Toast уведомления»"):
-            page.click_notify_button(button_name)
+            toast = page.click_notify_button_and_wait(button_name, toast_text)
         with allure.step(f"Тост содержит ровно текст «{toast_text}»"):
-            toast = page.wait_toast(toast_text)
             assert toast.text.strip() == toast_text
 
     def test_tc009_notification_block_show(self, driver):
@@ -211,9 +210,10 @@ class TestBasicElements:
         """TC-014: пустой обязательный Email не блокирует действия."""
         page = BasicElementsPage(driver)
         with allure.step("При пустом Email кликаем «Успех» в «Toast уведомления»"):
-            page.click_notify_button("Успех")
+            toast = page.click_notify_button_and_wait(
+                "Успех", "Операция выполнена успешно!"
+            )
         with allure.step("Тост «Операция выполнена успешно!» появляется"):
-            toast = page.wait_toast("Операция выполнена успешно!")
             assert toast.text.strip() == "Операция выполнена успешно!"
         with allure.step("Сообщений об обязательности Email нет"):
             assert page.error_elements_visible() == 0
