@@ -22,9 +22,9 @@ class TestInteractiveElements:
         with allure.step("Осматриваем прогресс-бар в исходном состоянии"):
             snapshot = page.progress_snapshot()
         with allure.step("Прогресс 0%, статус «Ожидание», кнопка активна"):
-            assert snapshot["now"] == "0"
-            assert snapshot["status"] == "Ожидание"
-            assert snapshot["disabled"] is False
+            assert snapshot.get("now") == "0", snapshot
+            assert snapshot.get("status") == "Ожидание", snapshot
+            assert snapshot.get("disabled") is False, snapshot
 
     def test_tc020_progress_completes(self, driver):
         """TC-020: запуск доводит прогресс до 100% со статусом «Готово» и тостом."""

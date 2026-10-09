@@ -30,10 +30,13 @@ class InteractiveElementsPage:
     # два отдельных чтения успевают разъехаться (TC-021).
     # Selenium execute_script требует явного return — без него скрипт
     # возвращает undefined (None) даже при корректном коде.
+    # React в момент гидратации/ререндера может временно вычищать DOM —
+    # снимок обязан быть null-безопасным (см. CI-падение 2026-10-09).
     STATUS_AND_BUTTON_SNAPSHOT = (
         "return (() => {"
         "  const pb = document.querySelector('[data-testid=\"progress-bar\"]');"
-        "  const card = pb.closest('.glass') || pb.closest('[class*=\"rounded-2xl\"]');"
+        "  if (!pb) return null;"
+        "  const card = pb.closest('[class*=\"rounded-2xl\"]');"
         "  const badge = card ? card.querySelector('span.rounded-full') : null;"
         "  const btn = document.querySelector('[data-testid=\"start-loading-button\"]');"
         "  return {status: badge ? badge.textContent.trim() : null,"
@@ -54,6 +57,24 @@ class InteractiveElementsPage:
         # прогидратированных обработчиков кнопки он не влияет.
         self.driver.execute_script(
             "window.addEventListener('submit', e => e.preventDefault(), true);"
+        )
+        self.wait_hydrated()
+
+    def wait_hydrated(self, timeout=20):
+        """Ждёт, пока React навесит обработчики (маркер __reactProps$ на кнопке).
+
+        До гидратации клики и send_keys не срабатывают — обработчиков ещё нет.
+        В момент ререндера элемент может временно исчезать из DOM — считаем
+        отсутствие кнопки признаком «ещё не готово» и продолжаем опрос.
+        """
+        return WebDriverWait(self.driver, timeout).until(
+            lambda d: d.execute_script(
+                "var b = document.querySelector('[data-testid=\"start-loading-button\"]');"
+                "if (!b) return false;"
+                "return Object.keys(b).some(function (k) {"
+                "  return k.indexOf('__reactProps$') === 0;"
+                "});"
+            )
         )
 
     def _element(self, locator):
