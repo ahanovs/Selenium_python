@@ -148,6 +148,11 @@ class MultiStepFormPage:
         self._field(self.EMAIL_INPUT).send_keys(email)
         self._field(self.PHONE_INPUT).send_keys(phone)
 
+    def clear_personal_info(self):
+        """Очищает поля шага 1 — для правки данных send_keys дописывает к старым."""
+        for locator in (self.NAME_INPUT, self.EMAIL_INPUT, self.PHONE_INPUT):
+            self._field(locator).clear()
+
     def _field(self, locator):
         return self.wait.until(EC.visibility_of_element_located(locator))
 
