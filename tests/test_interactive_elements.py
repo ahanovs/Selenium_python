@@ -90,7 +90,8 @@ class TestInteractiveElements:
         page.open()
         # Короткий каталог: имя 200 символов + длинный путь pytest tmp_path
         # превышает лимит Windows (~260 символов).
-        files_dir = os.path.abspath("tmp-tc023-files")
+        worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+        files_dir = os.path.abspath(f"tmp-tc023-files-{worker}")
         os.makedirs(files_dir, exist_ok=True)
         filepath = os.path.join(files_dir, filename)
         with open(filepath, "wb") as f:

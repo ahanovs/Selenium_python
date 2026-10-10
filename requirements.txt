@@ -1,5 +1,6 @@
 selenium>=4.20
 pytest>=8.0
 pytest-repeat>=0.9
+pytest-xdist>=3.6
 allure-pytest>=2.13
 ruff>=0.6
