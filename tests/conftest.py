@@ -7,6 +7,7 @@ import tempfile
 
 import pytest
 from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
 
 from pages.basic_elements_page import BasicElementsPage
 
@@ -82,6 +83,12 @@ def driver(download_dir):
             {"mobile": False, "width": 1280, "height": 1600, "deviceScaleFactor": 1},
         )
         BasicElementsPage(driver).open()
+        # Eager-стратегия возвращает управление на DOMContentLoaded — скрипты
+        # стенда ещё не дозагрузились, и первый тест после холодного старта
+        # ловит таймауты (дважды ловил pre-push гейт). Ждём полной загрузки.
+        WebDriverWait(driver, 15).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
         yield driver
     finally:
         driver.quit()
