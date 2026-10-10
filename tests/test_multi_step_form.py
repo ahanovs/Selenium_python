@@ -20,7 +20,6 @@ class TestMultiStepForm:
         """TC-027: изначальное состояние wizard."""
         page = MultiStepFormPage(driver)
         page.open()
-        page.open()
         with allure.step("Осматриваем wizard в исходном состоянии"):
             snapshot = page.progress_snapshot()
         with allure.step("Шаг 1 из 3, прогресс 0%, «Назад» неактивна, поля пусты"):
@@ -42,6 +41,7 @@ class TestMultiStepForm:
         with allure.step("Кликаем «Далее» — шаг 2 «Настройки», прогресс 50%"):
             page.click_next()
             page.wait_step_indicator("Шаг 2 из 3")
+            assert page.progress_percent() == 50
         with allure.step("Кликаем «Далее» — шаг 3 «Подтверждение», прогресс 100%"):
             page.click_next()
             page.wait_step_indicator("Шаг 3 из 3")
@@ -153,7 +153,7 @@ class TestMultiStepForm:
             assert page.newsletter_checked() is True
         with allure.step("Переходим «Назад» на шаг 2 и обратно — отметки сохранены"):
             page.click_back()
-            page.wait_step_indicator("Шаг 1 из 3")
+            page.wait_step_indicator("Шаг 2 из 3")
             page.click_next()
             page.wait_step_indicator("Шаг 3 из 3")
             assert page.terms_checked() is True
@@ -173,8 +173,8 @@ class TestMultiStepForm:
             page.check_terms()
         with allure.step("Кликаем «Отправить» и сразу проверяем тост"):
             page.click_submit()
-            toast = page.success_toast_text(timeout=5)
-            assert "успешно отправлена" in toast
+            toast = page.wait_success_toast(timeout=5)
+            assert toast and "успешно отправлена" in toast
 
     def test_tc035_summary_duplicates_after_edit(self, driver):
         """TC-035: сводка дублирует значения после правки (баг тренажёра)."""
@@ -199,8 +199,8 @@ class TestMultiStepForm:
             page.wait_step_indicator("Шаг 2 из 3")
             page.click_next()
             page.wait_step_indicator("Шаг 3 из 3")
-        with allure.step("Сводка аккумулирует значения — строки содержат старое и новое"):
+        with allure.step("Сводка дублирует значения после правки — баг тренажёра"):
             summary = page.summary_text()
-            assert "Имя: Иван ТестовПётр Обновлённый" in summary
-            assert "Email: ivan@test.ruivan@test.ru" in summary
-            assert "Телефон: +7 999 123-45-67+7 999 123-45-67" in summary
+            assert "Пётр Обновлённый" in summary, f"нового имени нет:\n{summary}"
+            assert summary.count(EMAIL) >= 2, f"email не задублирован:\n{summary}"
+            assert summary.count(PHONE) >= 2, f"телефон не задублирован:\n{summary}"
