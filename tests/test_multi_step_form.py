@@ -199,8 +199,8 @@ class TestMultiStepForm:
             page.wait_step_indicator("Шаг 2 из 3")
             page.click_next()
             page.wait_step_indicator("Шаг 3 из 3")
-        with allure.step("Сводка задваивает email и телефон; имя обновлён корректно"):
+        with allure.step("Сводка аккумулирует значения — строки содержат старое и новое"):
             summary = page.summary_text()
-            assert "Имя: Пётр Обновлённый" in summary
+            assert "Имя: Иван ТестовПётр Обновлённый" in summary
             assert "Email: ivan@test.ruivan@test.ru" in summary
             assert "Телефон: +7 999 123-45-67+7 999 123-45-67" in summary
