@@ -22,7 +22,8 @@ class TestMultiStepForm:
         page.open()
         with allure.step("Осматриваем wizard в исходном состоянии"):
             snapshot = page.progress_snapshot()
-        with allure.step("Шаг 1 из 3, прогресс 0%, «Назад» неактивна, поля пусты"):
+        with allure.step("Шаг 1 из 3 «Личная информация», прогресс 0%, «Назад» неактивна, поля пусты"):
+            assert page.body_contains("Личная информация")
             assert snapshot["step"] == "Шаг 1 из 3"
             assert snapshot["backDisabled"] is True
             assert snapshot["button"] == "Далее"
@@ -41,10 +42,12 @@ class TestMultiStepForm:
         with allure.step("Кликаем «Далее» — шаг 2 «Настройки», прогресс 50%"):
             page.click_next()
             page.wait_step_indicator("Шаг 2 из 3")
+            assert page.body_contains("Настройки")
             assert page.progress_percent() == 50
         with allure.step("Кликаем «Далее» — шаг 3 «Подтверждение», прогресс 100%"):
             page.click_next()
             page.wait_step_indicator("Шаг 3 из 3")
+            assert page.body_contains("Подтверждение")
             assert page.progress_percent() == 100
 
     def test_tc029_wizard_back_preserves_data(self, driver):
@@ -80,6 +83,12 @@ class TestMultiStepForm:
             page.click_next()
             page.wait_step_indicator("Шаг 2 из 3")
             assert page.error_message_text() is None
+        with allure.step("Строки по 300 символов не обрезаются — лимита длины нет"):
+            page.click_back()
+            page.wait_step_indicator("Шаг 1 из 3")
+            values = ["A" * 300, "a" * 295 + "@t.ru", "1" * 300]
+            page.fill_personal_info(*values)
+            assert page.field_values() == values
 
     def test_tc031_step2_settings_controls(self, driver):
         """TC-031: переключатель, тема и язык меняют значения."""
@@ -93,6 +102,15 @@ class TestMultiStepForm:
             assert page.notifications_state() == "false"
             assert "Темная" in page.theme_text()
             assert "Русский" in page.language_text()
+        with allure.step("В списке темы три варианта, в списке языка три"):
+            theme_options = page.dropdown_options(page.THEME_SELECT)
+            assert len(theme_options) == 3
+            for label in ("Светлая", "Темная", "Автоматическая"):
+                assert any(label in option for option in theme_options), theme_options
+            language_options = page.dropdown_options(page.LANGUAGE_SELECT)
+            assert len(language_options) == 3
+            for label in ("Русский", "English", "Deutsch"):
+                assert any(label in option for option in language_options), language_options
         with allure.step("Кликаем переключатель — включается"):
             page.toggle_notifications()
             assert page.notifications_state() == "true"
@@ -176,8 +194,8 @@ class TestMultiStepForm:
             toast = page.wait_success_toast(timeout=5)
             assert toast and "успешно отправлена" in toast
 
-    def test_tc035_summary_duplicates_after_edit(self, driver):
-        """TC-035: сводка дублирует значения после правки (баг тренажёра)."""
+    def test_tc035_summary_updates_after_edit(self, driver):
+        """TC-035: правка имени после «Назад» обновляет сводку без дублей."""
         page = MultiStepFormPage(driver)
         page.open()
         with allure.step("Заполняем шаги 1–2 и открываем шаг 3"):
@@ -191,16 +209,16 @@ class TestMultiStepForm:
             page.wait_step_indicator("Шаг 2 из 3")
             page.click_back()
             page.wait_step_indicator("Шаг 1 из 3")
-        with allure.step("Меняем имя на «Пётр Обновлённый» (очищая поле)"):
-            page.clear_personal_info()
+        with allure.step("Заменяем имя на «Пётр Обновлённый» (Ctrl+A + ввод)"):
             page.fill_personal_info("Пётр Обновлённый", EMAIL, PHONE)
         with allure.step("Возвращаемся «Далее» дважды на шаг 3"):
             page.click_next()
             page.wait_step_indicator("Шаг 2 из 3")
             page.click_next()
             page.wait_step_indicator("Шаг 3 из 3")
-        with allure.step("Сводка дублирует значения после правки — баг тренажёра"):
+        with allure.step("Сводка: новое имя, старого нет, email и телефон по одному разу"):
             summary = page.summary_text()
-            assert "Пётр Обновлённый" in summary, f"нового имени нет:\n{summary}"
-            assert summary.count(EMAIL) >= 2, f"email не задублирован:\n{summary}"
-            assert summary.count(PHONE) >= 2, f"телефон не задублирован:\n{summary}"
+            assert "Имя: Пётр Обновлённый" in summary, f"нового имени нет:\n{summary}"
+            assert "Иван Тестов" not in summary, f"старое имя осталось:\n{summary}"
+            assert summary.count(EMAIL) == 1, f"email не в единственном числе:\n{summary}"
+            assert summary.count(PHONE) == 1, f"телефон не в единственном числе:\n{summary}"

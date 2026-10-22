@@ -8,6 +8,7 @@ preventDefault и ждёт маркер гидратации (__reactProps$ на
 
 from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -95,18 +96,33 @@ class MultiStepFormPage:
         """Псевдоним снимка (единый стиль с другими PO)."""
         return self.status_snapshot()
 
-    def wait_step_indicator(self, text, timeout=10):
-        """Ждёт индикацию вида «Шаг N из 3» с нужным номером шага."""
+    def body_contains(self, text, timeout=10):
+        """Текст присутствует в body (заголовки шагов и прочий контент)."""
         return WebDriverWait(self.driver, timeout).until(
             lambda d: text in d.execute_script("return document.body.innerText;")
         )
 
+    def wait_step_indicator(self, text, timeout=10):
+        """Ждёт индикацию вида «Шаг N из 3» с нужным номером шага."""
+        return self.body_contains(text, timeout)
+
     # --- шаг 1 ---
 
     def fill_personal_info(self, name, email, phone):
-        self._element(self.NAME_INPUT).send_keys(name)
-        self._element(self.EMAIL_INPUT).send_keys(email)
-        self._element(self.PHONE_INPUT).send_keys(phone)
+        """Заполняет поля с клавиатуры: Ctrl+A + ввод заменяет значение.
+
+        Поля под контролем React: element.clear() меняет только DOM, состояние
+        формы не обновляется, и при следующем рендере старое значение
+        возвращается — поэтому замена делается клавиатурными событиями.
+        """
+        for locator, value in (
+            (self.NAME_INPUT, name),
+            (self.EMAIL_INPUT, email),
+            (self.PHONE_INPUT, phone),
+        ):
+            field = self._element(locator)
+            field.send_keys(Keys.CONTROL, "a")
+            field.send_keys(value)
 
     def field_values(self):
         return [
@@ -138,10 +154,15 @@ class MultiStepFormPage:
     def language_text(self):
         return self._element(self.LANGUAGE_SELECT).text.strip()
 
-    def clear_personal_info(self):
-        """Очищает поля шага 1 — для правки данных send_keys дописывает к старым."""
-        for locator in (self.NAME_INPUT, self.EMAIL_INPUT, self.PHONE_INPUT):
-            self._element(locator).clear()
+    def dropdown_options(self, trigger_locator):
+        """Открывает комбобокс, возвращает тексты вариантов, закрывает без выбора."""
+        self._element(trigger_locator).click()
+        options = self.wait.until(
+            EC.visibility_of_all_elements_located(self.SELECT_OPTION)
+        )
+        texts = [option.text.strip() for option in options]
+        self.driver.find_element(By.CSS_SELECTOR, "body").send_keys(Keys.ESCAPE)
+        return texts
 
     def _select_radix(self, trigger_locator, label):
         """Radix-select: клик по триггеру, затем клик по option с текстом."""
