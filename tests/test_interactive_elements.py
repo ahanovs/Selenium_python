@@ -11,6 +11,7 @@ import pytest
 
 from pages.interactive_elements_page import InteractiveElementsPage
 
+pytestmark = [pytest.mark.ui]
 
 class TestInteractiveElements:
     """Страница interactive-elements — сценарии принятых кейсов."""

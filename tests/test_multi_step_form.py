@@ -5,6 +5,7 @@
 
 
 import allure
+import pytest
 
 from pages.multi_step_form_page import MultiStepFormPage
 
@@ -12,6 +13,8 @@ NAME = "Иван Тестов"
 EMAIL = "ivan@test.ru"
 PHONE = "+7 999 123-45-67"
 
+
+pytestmark = [pytest.mark.ui]
 
 class TestMultiStepForm:
     """Страница multi-step-form — сценарии принятых кейсов."""

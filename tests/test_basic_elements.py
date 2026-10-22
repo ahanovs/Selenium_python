@@ -8,6 +8,7 @@ import pytest
 
 from pages.basic_elements_page import BasicElementsPage
 
+pytestmark = [pytest.mark.ui]
 
 class TestBasicElements:
     """Страница basic-elements — сценарии принятых кейсов."""
