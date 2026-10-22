@@ -50,7 +50,11 @@ def main() -> None:
 
     shown = 0
     for case in suite.iter("testcase"):
-        fail = case.find("failure") or case.find("error")
+        # ElementTree-элемент без детей falsy на Python ≤ 3.11 — сравниваем
+        # с None, иначе реальные падения пропускаются молча.
+        fail = case.find("failure")
+        if fail is None:
+            fail = case.find("error")
         if fail is None:
             continue
         name = case.get("name", "?")
