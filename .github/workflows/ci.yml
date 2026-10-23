@@ -98,11 +98,70 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # 3. Summary & Notify — итоговая страница запуска и Telegram-уведомление.
+      - name: Upload allure results
+        # allure-pytest пишет результаты сам; публикуем даже после падения —
+        # отчёт по красному прогону не менее полезен.
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-${{ github.run_id }}
+          path: allure-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # 3. Allure report — генерация отчёта из результатов Tests и публикация
+  # на GitHub Pages. Публикуется только с main: сайт = отчёт последнего
+  # смерженного прогона (включая красный — по нему и разбираются падения).
+  allure:
+    name: Allure report (Pages)
+    needs: [tests]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download allure results
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v7
+        with:
+          name: allure-results-${{ github.run_id }}
+          path: allure-results
+
+      - name: Install Allure CLI
+        run: |
+          curl -sfL -o allure.tgz             https://repo1.maven.org/maven2/io/qameta/allure/allure-commandline/2.29.0/allure-commandline-2.29.0.tgz
+          sudo tar -xzf allure.tgz -C /opt
+          echo "/opt/allure-2.29.0/bin" >> "$GITHUB_PATH"
+
+      - name: Generate Allure report
+        if: ${{ !cancelled() }}
+        run: allure generate allure-results --clean --output allure-report
+
+      - name: Upload pages artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: allure-report
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        if: ${{ !cancelled() }}
+        uses: actions/deploy-pages@v4
+
+  # 4. Summary & Notify — итоговая страница запуска и Telegram-уведомление.
   # Собирает статусы всех проверок, даже когда что-то упало или не стартовало.
   summary:
     name: Summary & Notify
-    needs: [lint, tests]
+    needs: [lint, tests, allure]
     # `always()` — джоба получает слово и после падения, и после отмены соседей.
     if: ${{ always() }}
     timeout-minutes: 5

@@ -1,6 +1,7 @@
 # Selenium Portfolio
 
 [![Selenium CI](https://github.com/ahanovs/Selenium_python/actions/workflows/ci.yml/badge.svg)](https://github.com/ahanovs/Selenium_python/actions/workflows/ci.yml)
+[![Allure Report](https://img.shields.io/badge/Allure-отчёт-4c8cbf?logo=allure)](https://ahanovs.github.io/Selenium_python/)
 
 UI-автотесты на Python + Selenium 4 для публичного учебного тренажёра
 [ThreadQA XPath Practice Hub](https://lms.threadqa.ru/xpath-practice-hub).
