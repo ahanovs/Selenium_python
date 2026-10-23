@@ -78,7 +78,9 @@ jobs:
           HEADLESS: "1"
         run: |
           set +e
-          python -m pytest tests/ --junitxml=reports/junit.xml -q
+          # --alluredir обязателен: без него allure-pytest не пишет результаты,
+          # и джобе публикации нечего собирать (урок прогона #37).
+          python -m pytest tests/ --junitxml=reports/junit.xml --alluredir=allure-results --clean-alluredir -q
           code=$?
           # 5 = no tests collected. На старте проекта набор пуст — это штатный
           # этап, а не ошибка; CI остаётся зелёным до первого кейса.
