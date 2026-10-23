@@ -1,15 +1,23 @@
 """Общие фикстуры: Chrome-драйвер, каталог загрузок, открытие страницы стенда."""
 
+import itertools
 import json
 import os
 import re
 import tempfile
+import time
+import warnings
 
 import pytest
+import requests
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 
 from pages.basic_elements_page import BasicElementsPage
+from tests.api.api_client import TIMEOUT as API_TIMEOUT
+from tests.api.api_client import delete_user_by_creds
+
+_counter = itertools.count()
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -92,3 +100,68 @@ def driver(download_dir):
         yield driver
     finally:
         driver.quit()
+
+
+def _delete_user_quietly(base_url, state):
+    """Уборка одного API-пользователя; «нечего убирать» — не ошибка."""
+    email, password = state["email"], state["password"]
+    try:
+        r = requests.delete(
+            f"{base_url}/users/me/",
+            json={"current_password": password},
+            headers={"Authorization": f"Bearer {state['access']}"},
+            timeout=API_TIMEOUT,
+        )
+        if r.status_code == 204:
+            return
+        # Токен мог быть отозван (logout, смена пароля) — тихий фолбэк.
+        delete_user_by_creds(base_url, email, password)
+    except requests.RequestException as e:
+        warnings.warn(f"[уборка] {email}: сетевая ошибка {e} — не убран")
+
+
+@pytest.fixture
+def make_user():
+    """Фабрика API-пользователей Bro AI (общая для api/ и интеграционных тестов).
+
+    register() создаёт уникального пользователя и возвращает изменяемый
+    словарь состояния; тест, сменивший пароль, обновляет state["password"].
+    register(cleanup=False) — расходный аккаунт без уборки.
+    """
+    base_url = "http://31.59.114.45:8000/api/v1"
+    created = []
+
+    def register(username=None, email=None, password=None, cleanup=True):
+        stamp = time.time_ns()
+        seq = next(_counter)
+        payload = {
+            "username": username or f"qa{stamp % 10**10}{seq}",
+            "email": email or f"qa.api.{stamp}{seq}@test.ru",
+            "password": password or f"Zx!{stamp % 10**6}Qw.Rm{seq}",
+        }
+        r = requests.post(f"{base_url}/users/", json=payload, timeout=API_TIMEOUT)
+        assert r.status_code == 201, (
+            f"регистрация фикстуры упала: {r.status_code} {r.text[:200]}"
+        )
+        body = r.json()
+        state = {
+            "email": body["email"],
+            "username": body.get("username") or payload["username"],
+            "password": payload["password"],
+            "access": body["access"],
+            "refresh": body["refresh"],
+            "id": body["id"],
+        }
+        if cleanup:
+            created.append(state)
+        return state
+
+    def track(state):
+        """Добавить в уборку пользователя, созданного вручную."""
+        created.append(state)
+
+    register.track = track
+    yield register
+
+    for state in created:
+        _delete_user_quietly(base_url, state)

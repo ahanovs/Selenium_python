@@ -6,10 +6,35 @@
 """
 
 import json
+import warnings
 
 import requests
 
 TIMEOUT = 15
+
+
+def delete_user_by_creds(base_url, email, password):
+    """Тихая уборка: логин + DELETE /me; «нечего убирать» — warning, не ошибка."""
+    try:
+        login = requests.post(
+            f"{base_url}/jwt/create/",
+            json={"email": email, "password": password},
+            timeout=TIMEOUT,
+        )
+        if login.status_code != 200:
+            warnings.warn(f"[уборка] {email}: логин {login.status_code} — аккаунт уже недоступен, пропущен")
+            return
+        access = login.json()["access"]
+        r = requests.delete(
+            f"{base_url}/users/me/",
+            json={"current_password": password},
+            headers={"Authorization": f"Bearer {access}"},
+            timeout=TIMEOUT,
+        )
+        if r.status_code != 204:
+            warnings.warn(f"[уборка] {email}: DELETE {r.status_code} — не убран")
+    except requests.RequestException as e:
+        warnings.warn(f"[уборка] {email}: сетевая ошибка {e} — не убран")
 
 
 class ApiClient:
