@@ -8,7 +8,7 @@
 import time
 from typing import ClassVar
 
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -270,3 +270,11 @@ class BasicElementsPage:
 
     def reload(self):
         self.driver.refresh()
+        # После перезагрузки React пере-рендерит дерево: первый локатор ловит
+        # StaleElementReference (CI-флейк TC-016, прогоны #32/#40). Ждём
+        # «устакана» формы, игнорируя stale — WebDriverWait игнорирует только
+        # NotFound, поэтому stale указываем явно.
+        WebDriverWait(
+            self.driver, 15, poll_frequency=0.3,
+            ignored_exceptions=(StaleElementReferenceException,),
+        ).until(EC.visibility_of_element_located(self.USERNAME_FIELD))
