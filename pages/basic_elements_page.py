@@ -163,14 +163,25 @@ class BasicElementsPage:
 
     # --- чекбокс и радио ---
 
-    def click_terms_checkbox(self):
-        self._element(self.TERMS_CHECKBOX).click()
+    def set_terms_checked(self, desired):
+        """Приводит чекбокс условий к желаемому состоянию (повтор по эффекту).
+
+        Оракул — фактическое состояние selected: на непрогретом стенде клик
+        уходит до гидратации React, а в момент ререндера чекбокс возвращается
+        к прежнему состоянию (CI 2026-10-25: TC-005, TC-018). Общий лимит
+        15 с, после него — честное падение (CODEX.md, раздел 8).
+        """
+        self._click_with_effect(
+            self.TERMS_CHECKBOX,
+            lambda driver: self.terms_checked() == desired,
+        )
 
     def terms_checked(self):
         return self._element(self.TERMS_CHECKBOX).is_selected()
 
-    def click_terms_label(self):
-        self._element(self.TERMS_LABEL).click()
+    def check_terms_via_label(self):
+        """Отмечает чекбокс кликом по подписи (повтор по эффекту, TC-006)."""
+        self._click_with_effect(self.TERMS_LABEL, lambda driver: self.terms_checked())
 
     def click_newsletter_yes(self):
         self._element(self.NEWSLETTER_YES).click()

@@ -144,6 +144,21 @@ class InteractiveElementsPage:
             )
         )
 
+    def wait_progress_snapshot(self, timeout=10):
+        """Ждёт полный снимок прогресса: все три поля сняты непустыми.
+
+        После reload React пере-монтирует карточку, сырой снимок в это
+        время пуст (None -> {}), и ассерт по ключам даёт KeyError
+        (CI 2026-10-25, TC-026). Пустые значения полей ждём наравне
+        с отсутствием снимка.
+        """
+
+        def full_snapshot(d):
+            snap = d.execute_script(self.STATUS_AND_BUTTON_SNAPSHOT) or {}
+            return snap if None not in snap.values() else False
+
+        return WebDriverWait(self.driver, timeout).until(full_snapshot)
+
     def aria_valuenow(self):
         return int(self._element(self.PROGRESS_BAR).get_attribute("aria-valuenow"))
 
@@ -230,4 +245,10 @@ class InteractiveElementsPage:
         )
 
     def reload(self):
+        """F5 с ожиданием гидратации (зеркало BasicElementsPage.reload).
+
+        После refresh React пере-монтирует дерево: сырые чтения в это время
+        дают пустой снимок и разъехавшиеся значения (CI 2026-10-25, TC-026).
+        """
         self.driver.refresh()
+        self.wait_hydrated()
