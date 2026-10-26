@@ -48,7 +48,14 @@ class BasicElementsPage:
 
     def __init__(self, driver):
         self.driver = driver
-        self.wait = WebDriverWait(driver, TIMEOUT)
+        # Stale-игнор на уровне всех ожиданий PO: после refresh/ререндера
+        # React вторая волна может убрать элемент между find и проверкой
+        # видимости — это «перечитай», а не падение (TC-016, прогон #49:
+        # точечный stale-игнор в reload() оказался недостаточным).
+        self.wait = WebDriverWait(
+            self.driver, TIMEOUT,
+            ignored_exceptions=(StaleElementReferenceException,),
+        )
 
     def open(self):
         self.driver.get(self.URL)

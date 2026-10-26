@@ -8,7 +8,7 @@ JS-снимком карточки (у бейджа нет testid, классы 
 import time
 import warnings
 
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -48,7 +48,12 @@ class InteractiveElementsPage:
 
     def __init__(self, driver):
         self.driver = driver
-        self.wait = WebDriverWait(driver, TIMEOUT)
+        # Stale-игнор: тот же мотив, что в BasicElementsPage.__init__ —
+        # ререндер после refresh/гидратации не должен ронять чтения.
+        self.wait = WebDriverWait(
+            self.driver, TIMEOUT,
+            ignored_exceptions=(StaleElementReferenceException,),
+        )
 
     def open(self):
         self.driver.get(self.URL)
