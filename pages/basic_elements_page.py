@@ -6,6 +6,7 @@
 """
 
 import time
+import warnings
 from typing import ClassVar
 
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
@@ -80,16 +81,25 @@ class BasicElementsPage:
         Первый клик может уйти до гидратации React (обработчиков ещё нет,
         элемент виден, но не отвечает). Оракул — появление эффекта; клик
         повторяется, пока не выйдет общий таймаут, после чего исключение
-        уходит тесту (CODEX.md, раздел 8).
+        уходит тесту (CODEX.md, раздел 8). Повтор помечается warning'ом:
+        ретраи не должны быть молчаливыми — частые повторы, попавшие в лог
+        прогона, сигнал разбирать стенд (решение автора 2026-10-26).
         """
         deadline = time.monotonic() + timeout
+        clicks = 0
         while True:
             self._element(locator).click()
+            clicks += 1
             try:
                 return WebDriverWait(self.driver, 3).until(effect)
             except TimeoutException:
                 if time.monotonic() >= deadline:
                     raise
+                warnings.warn(
+                    f"[эффект-клик] {locator[1]}: клик {clicks} не дал "
+                    "эффекта, повторяю",
+                    stacklevel=2,
+                )
 
     def _type(self, locator, value):
         field = self.wait.until(EC.element_to_be_clickable(locator))

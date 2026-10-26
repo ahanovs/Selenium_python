@@ -6,6 +6,7 @@ JS-снимком карточки (у бейджа нет testid, классы 
 """
 
 import time
+import warnings
 
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -92,16 +93,24 @@ class InteractiveElementsPage:
         Первый клик может уйти до гидратации React: кнопка — submit внутри
         формы без preventDefault, страница просто перезагружается. Оракул —
         появление эффекта; клик повторяется до общего таймаута, после него
-        исключение уходит тесту (CODEX.md, раздел 8).
+        исключение уходит тесту (CODEX.md, раздел 8). Повтор помечается
+        warning'ом — молчаливые ретраи запрещены (решение автора 2026-10-26).
         """
         deadline = time.monotonic() + timeout
+        clicks = 0
         while True:
             self._element(locator).click()
+            clicks += 1
             try:
                 return WebDriverWait(self.driver, 3).until(effect)
             except TimeoutException:
                 if time.monotonic() >= deadline:
                     raise
+                warnings.warn(
+                    f"[эффект-клик] {locator[1]}: клик {clicks} не дал "
+                    "эффекта, повторяю",
+                    stacklevel=2,
+                )
 
     def click_start_wait_loading(self, timeout=20):
         """Кликает «Запустить» и ловит статус, начинающийся с «Загрузка».
