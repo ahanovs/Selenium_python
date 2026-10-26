@@ -6,6 +6,7 @@
 """
 
 import time
+import warnings
 from typing import ClassVar
 
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
@@ -47,7 +48,14 @@ class BasicElementsPage:
 
     def __init__(self, driver):
         self.driver = driver
-        self.wait = WebDriverWait(driver, TIMEOUT)
+        # Stale-игнор на уровне всех ожиданий PO: после refresh/ререндера
+        # React вторая волна может убрать элемент между find и проверкой
+        # видимости — это «перечитай», а не падение (TC-016, прогон #49:
+        # точечный stale-игнор в reload() оказался недостаточным).
+        self.wait = WebDriverWait(
+            self.driver, TIMEOUT,
+            ignored_exceptions=(StaleElementReferenceException,),
+        )
 
     def open(self):
         self.driver.get(self.URL)
@@ -80,16 +88,25 @@ class BasicElementsPage:
         Первый клик может уйти до гидратации React (обработчиков ещё нет,
         элемент виден, но не отвечает). Оракул — появление эффекта; клик
         повторяется, пока не выйдет общий таймаут, после чего исключение
-        уходит тесту (CODEX.md, раздел 8).
+        уходит тесту (CODEX.md, раздел 8). Повтор помечается warning'ом:
+        ретраи не должны быть молчаливыми — частые повторы, попавшие в лог
+        прогона, сигнал разбирать стенд (решение автора 2026-10-26).
         """
         deadline = time.monotonic() + timeout
+        clicks = 0
         while True:
             self._element(locator).click()
+            clicks += 1
             try:
                 return WebDriverWait(self.driver, 3).until(effect)
             except TimeoutException:
                 if time.monotonic() >= deadline:
                     raise
+                warnings.warn(
+                    f"[эффект-клик] {locator[1]}: клик {clicks} не дал "
+                    "эффекта, повторяю",
+                    stacklevel=2,
+                )
 
     def _type(self, locator, value):
         field = self.wait.until(EC.element_to_be_clickable(locator))
@@ -163,14 +180,25 @@ class BasicElementsPage:
 
     # --- чекбокс и радио ---
 
-    def click_terms_checkbox(self):
-        self._element(self.TERMS_CHECKBOX).click()
+    def set_terms_checked(self, desired):
+        """Приводит чекбокс условий к желаемому состоянию (повтор по эффекту).
+
+        Оракул — фактическое состояние selected: на непрогретом стенде клик
+        уходит до гидратации React, а в момент ререндера чекбокс возвращается
+        к прежнему состоянию (CI 2026-10-25: TC-005, TC-018). Общий лимит
+        15 с, после него — честное падение (CODEX.md, раздел 8).
+        """
+        self._click_with_effect(
+            self.TERMS_CHECKBOX,
+            lambda driver: self.terms_checked() == desired,
+        )
 
     def terms_checked(self):
         return self._element(self.TERMS_CHECKBOX).is_selected()
 
-    def click_terms_label(self):
-        self._element(self.TERMS_LABEL).click()
+    def check_terms_via_label(self):
+        """Отмечает чекбокс кликом по подписи (повтор по эффекту, TC-006)."""
+        self._click_with_effect(self.TERMS_LABEL, lambda driver: self.terms_checked())
 
     def click_newsletter_yes(self):
         self._element(self.NEWSLETTER_YES).click()

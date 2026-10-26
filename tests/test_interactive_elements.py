@@ -147,8 +147,8 @@ class TestInteractiveElements:
         with allure.step("Нажимаем F5"):
             page.reload()
         with allure.step("Прогресс сброшен, статус «Ожидание», кнопка активна, ошибок нет"):
-            snapshot = page.progress_snapshot()
-            assert snapshot["now"] == "0"
-            assert snapshot["status"] == "Ожидание"
-            assert snapshot["disabled"] is False
-            assert page.error_text_visible() is False
+            snapshot = page.wait_progress_snapshot()
+            assert snapshot["now"] == "0", "после перезагрузки прогресс сброшен в 0"
+            assert snapshot["status"] == "Ожидание", "статус вернулся к «Ожидание»"
+            assert snapshot["disabled"] is False, "кнопка «Запустить» снова активна"
+            assert page.error_text_visible() is False, "сообщения об ошибке на странице нет"

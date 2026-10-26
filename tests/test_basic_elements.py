@@ -69,22 +69,22 @@ class TestBasicElements:
     def test_tc005_terms_checkbox_toggle(self, driver):
         """TC-005: чекбокс устанавливается и снимается кликом."""
         page = BasicElementsPage(driver)
-        with allure.step("Первый клик по чекбоксу"):
-            page.click_terms_checkbox()
+        with allure.step("Кликаем чекбокс — отмечаем"):
+            page.set_terms_checked(True)
         with allure.step("Чекбокс отмечен"):
-            assert page.terms_checked()
-        with allure.step("Второй клик по чекбоксу"):
-            page.click_terms_checkbox()
+            assert page.terms_checked(), "после клика чекбокс отмечен"
+        with allure.step("Кликаем чекбокс — снимаем"):
+            page.set_terms_checked(False)
         with allure.step("Чекбокс снят"):
-            assert not page.terms_checked()
+            assert not page.terms_checked(), "повторный клик снимает чекбокс"
 
     def test_tc006_terms_label_click(self, driver):
         """TC-006: клик по тексту подписи переключает чекбокс."""
         page = BasicElementsPage(driver)
         with allure.step("Кликаем по тексту подписи"):
-            page.click_terms_label()
+            page.check_terms_via_label()
         with allure.step("Чекбокс отмечен"):
-            assert page.terms_checked()
+            assert page.terms_checked(), "клик по подписи отмечает чекбокс"
 
     def test_tc007_radio_mutual_exclusive(self, driver):
         """TC-007: радио изначально не выбраны и взаимоисключающие."""
@@ -240,7 +240,7 @@ class TestBasicElements:
             page.enter_email("test@example.com")
             page.enter_password("Password123")
             page.enter_comment("Проверка")
-            page.click_terms_checkbox()
+            page.set_terms_checked(True)
             page.select_country("Германия")
             page.click_newsletter_no()
         with allure.step("Нажимаем F5"):
@@ -279,6 +279,7 @@ class TestBasicElements:
         with allure.step("Значение установлено целиком, сообщений об ошибке нет"):
             assert page.comment_value_length() == len(text)
             assert page.error_elements_visible() == 0
-        with allure.step("Страница отвечает на действия: клик по чекбоксу"):
-            page.click_terms_checkbox()
-            assert page.terms_checked()
+        with allure.step("Страница отвечает на действия: кликаем чекбокс"):
+            page.set_terms_checked(True)
+        with allure.step("Чекбокс отмечается — страницу не сломало"):
+            assert page.terms_checked(), "после границы 100k символов клик по чекбоксу работает"

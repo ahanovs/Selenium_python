@@ -6,8 +6,9 @@ JS-снимком карточки (у бейджа нет testid, классы 
 """
 
 import time
+import warnings
 
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -47,7 +48,12 @@ class InteractiveElementsPage:
 
     def __init__(self, driver):
         self.driver = driver
-        self.wait = WebDriverWait(driver, TIMEOUT)
+        # Stale-игнор: тот же мотив, что в BasicElementsPage.__init__ —
+        # ререндер после refresh/гидратации не должен ронять чтения.
+        self.wait = WebDriverWait(
+            self.driver, TIMEOUT,
+            ignored_exceptions=(StaleElementReferenceException,),
+        )
 
     def open(self):
         self.driver.get(self.URL)
@@ -92,16 +98,24 @@ class InteractiveElementsPage:
         Первый клик может уйти до гидратации React: кнопка — submit внутри
         формы без preventDefault, страница просто перезагружается. Оракул —
         появление эффекта; клик повторяется до общего таймаута, после него
-        исключение уходит тесту (CODEX.md, раздел 8).
+        исключение уходит тесту (CODEX.md, раздел 8). Повтор помечается
+        warning'ом — молчаливые ретраи запрещены (решение автора 2026-10-26).
         """
         deadline = time.monotonic() + timeout
+        clicks = 0
         while True:
             self._element(locator).click()
+            clicks += 1
             try:
                 return WebDriverWait(self.driver, 3).until(effect)
             except TimeoutException:
                 if time.monotonic() >= deadline:
                     raise
+                warnings.warn(
+                    f"[эффект-клик] {locator[1]}: клик {clicks} не дал "
+                    "эффекта, повторяю",
+                    stacklevel=2,
+                )
 
     def click_start_wait_loading(self, timeout=20):
         """Кликает «Запустить» и ловит статус, начинающийся с «Загрузка».
@@ -143,6 +157,21 @@ class InteractiveElementsPage:
                 else False
             )
         )
+
+    def wait_progress_snapshot(self, timeout=10):
+        """Ждёт полный снимок прогресса: все три поля сняты непустыми.
+
+        После reload React пере-монтирует карточку, сырой снимок в это
+        время пуст (None -> {}), и ассерт по ключам даёт KeyError
+        (CI 2026-10-25, TC-026). Пустые значения полей ждём наравне
+        с отсутствием снимка.
+        """
+
+        def full_snapshot(d):
+            snap = d.execute_script(self.STATUS_AND_BUTTON_SNAPSHOT) or {}
+            return snap if None not in snap.values() else False
+
+        return WebDriverWait(self.driver, timeout).until(full_snapshot)
 
     def aria_valuenow(self):
         return int(self._element(self.PROGRESS_BAR).get_attribute("aria-valuenow"))
@@ -230,4 +259,10 @@ class InteractiveElementsPage:
         )
 
     def reload(self):
+        """F5 с ожиданием гидратации (зеркало BasicElementsPage.reload).
+
+        После refresh React пере-монтирует дерево: сырые чтения в это время
+        дают пустой снимок и разъехавшиеся значения (CI 2026-10-25, TC-026).
+        """
         self.driver.refresh()
+        self.wait_hydrated()
