@@ -56,6 +56,46 @@ def download_dir():
     return tempfile.mkdtemp(prefix="selenium-downloads-")
 
 
+def _start_session(options):
+    """Запуск Chrome и подготовка сессии; при сбое — quit и исключение наверх.
+
+    Читающий таймаут команд 30 с вместо 120 с дефолта: зависший на
+    перегруженном раннере браузер не должен съедать две минуты до отказа
+    (прогон #51: TC-001 упал на сетапе, window/rect не ответила).
+    """
+    driver = webdriver.Chrome(options=options)
+    # Читающий таймаут команд 30 с вместо 120 с дефолта: зависший на
+    # перегруженном раннере браузер не должен съедать две минуты до отказа
+    # (прогон #51: TC-001 упал на сетапе, window/rect не ответила).
+    # set_timeout помечен устаревшим (советуют client_config), но локальный
+    # сервис создаёт executor без него — ждём апгрейд selenium, а шум
+    # deprecation в отчёты не пускаем.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        driver.command_executor.set_timeout(30)
+    try:
+        driver.set_window_size(1280, 720)
+        # Вьюпорт фиксируем через CDP: на CI-раннере оконный размер ненадёжен
+        # (фактическая высота выходила ~578px, страница не прокручивалась,
+        # элементы ниже 578px были недостижимы). 1600px — вся форма видна
+        # целиком, тесты не зависят от прокрутки и липкой шапки.
+        driver.execute_cdp_cmd(
+            "Emulation.setDeviceMetricsOverride",
+            {"mobile": False, "width": 1280, "height": 1600, "deviceScaleFactor": 1},
+        )
+        BasicElementsPage(driver).open()
+        # Eager-стратегия возвращает управление на DOMContentLoaded — скрипты
+        # стенда ещё не дозагрузились, и первый тест после холодного старта
+        # ловит таймауты (дважды ловил pre-push гейт). Ждём полной загрузки.
+        WebDriverWait(driver, 15).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        return driver
+    except Exception:
+        driver.quit()
+        raise
+
+
 @pytest.fixture
 def driver(download_dir):
     options = webdriver.ChromeOptions()
@@ -79,24 +119,18 @@ def driver(download_dir):
             "download.prompt_for_download": False,
         },
     )
-    driver = webdriver.Chrome(options=options)
     try:
-        driver.set_window_size(1280, 720)
-        # Вьюпорт фиксируем через CDP: на CI-раннере оконный размер ненадёжен
-        # (фактическая высота выходила ~578px, страница не прокручивалась,
-        # элементы ниже 578px были недостижимы). 1600px — вся форма видна
-        # целиком, тесты не зависят от прокрутки и липкой шапки.
-        driver.execute_cdp_cmd(
-            "Emulation.setDeviceMetricsOverride",
-            {"mobile": False, "width": 1280, "height": 1600, "deviceScaleFactor": 1},
+        driver = _start_session(options)
+    except Exception as first_error:  # noqa: BLE001 — любой сбой старта
+        # (зависший браузер, сеть) лечится одним перезапуском сессии;
+        # повторный сбой уходит автору теста без глушения.
+        warnings.warn(
+            f"[драйвер] сессия не ответила на старте "
+            f"({first_error.__class__.__name__}) — перезапускаю драйвер",
+            stacklevel=2,
         )
-        BasicElementsPage(driver).open()
-        # Eager-стратегия возвращает управление на DOMContentLoaded — скрипты
-        # стенда ещё не дозагрузились, и первый тест после холодного старта
-        # ловит таймауты (дважды ловил pre-push гейт). Ждём полной загрузки.
-        WebDriverWait(driver, 15).until(
-            lambda d: d.execute_script("return document.readyState") == "complete"
-        )
+        driver = _start_session(options)
+    try:
         yield driver
     finally:
         driver.quit()
