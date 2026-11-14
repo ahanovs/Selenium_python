@@ -17,6 +17,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 TIMEOUT = 10
+# Лимит попыток обращения к элементу со свежей ссылкой (см. _retried).
+STALE_ATTEMPTS = 3
 
 
 class BasicElementsPage:
@@ -82,6 +84,29 @@ class BasicElementsPage:
         )
         return element
 
+    def _retried(self, label, action):
+        """Исполняет действие по свежим ссылкам; при stale — ищет элементы заново.
+
+        WebDriverWait игнорирует stale только ВНУТРИ until(): после возврата
+        ссылки ререндер React может подменить узел до исполнения команды —
+        scrollIntoView в _element, клик, чтение атрибута. Именно в этом окне
+        упал TC-016 в Stability #5 (country_button_text, между until и
+        scrollIntoView). Каждая попытка ищет элементы заново; повтор помечен
+        warning'ом (молчаливые ретраи запрещены — CODEX.md, раздел 8),
+        после лимита — честное падение.
+        """
+        for attempt in range(1, STALE_ATTEMPTS + 1):
+            try:
+                return action()
+            except StaleElementReferenceException:
+                if attempt == STALE_ATTEMPTS:
+                    raise
+                warnings.warn(
+                    f"[stale-повтор] {label}: ссылка устарела, ищу заново "
+                    f"({attempt}/{STALE_ATTEMPTS})",
+                    stacklevel=3,
+                )
+
     def _click_with_effect(self, locator, effect, timeout=15):
         """Клик с повтором по эффекту для непрогретого стенда.
 
@@ -95,7 +120,7 @@ class BasicElementsPage:
         deadline = time.monotonic() + timeout
         clicks = 0
         while True:
-            self._element(locator).click()
+            self._retried(locator[1], lambda: self._element(locator).click())
             clicks += 1
             try:
                 return WebDriverWait(self.driver, 3).until(effect)
@@ -128,23 +153,43 @@ class BasicElementsPage:
 
     def set_comment_programmatically(self, value):
         """Установка значения в обход maxlength (проверка технологической границы)."""
-        field = self._element(self.COMMENT_FIELD)
-        self.driver.execute_script("arguments[0].value = arguments[1];", field, value)
+        self._retried(
+            self.COMMENT_FIELD[1],
+            lambda: self.driver.execute_script(
+                "arguments[0].value = arguments[1];",
+                self._element(self.COMMENT_FIELD), value,
+            ),
+        )
 
     def username_value(self):
-        return self._element(self.USERNAME_FIELD).get_attribute("value")
+        return self._retried(
+            self.USERNAME_FIELD[1],
+            lambda: self._element(self.USERNAME_FIELD).get_attribute("value"),
+        )
 
     def email_value(self):
-        return self._element(self.EMAIL_FIELD).get_attribute("value")
+        return self._retried(
+            self.EMAIL_FIELD[1],
+            lambda: self._element(self.EMAIL_FIELD).get_attribute("value"),
+        )
 
     def password_value(self):
-        return self._element(self.PASSWORD_FIELD).get_attribute("value")
+        return self._retried(
+            self.PASSWORD_FIELD[1],
+            lambda: self._element(self.PASSWORD_FIELD).get_attribute("value"),
+        )
 
     def password_input_type(self):
-        return self._element(self.PASSWORD_FIELD).get_attribute("type")
+        return self._retried(
+            self.PASSWORD_FIELD[1],
+            lambda: self._element(self.PASSWORD_FIELD).get_attribute("type"),
+        )
 
     def comment_value(self):
-        return self._element(self.COMMENT_FIELD).get_attribute("value")
+        return self._retried(
+            self.COMMENT_FIELD[1],
+            lambda: self._element(self.COMMENT_FIELD).get_attribute("value"),
+        )
 
     def comment_value_length(self):
         return len(self.comment_value())
@@ -162,9 +207,19 @@ class BasicElementsPage:
             )
 
     def country_options(self):
-        return [option.text.strip() for option in self.driver.find_elements(*self.COUNTRY_OPTION)]
+        return self._retried(
+            "список стран",
+            lambda: [
+                option.text.strip()
+                for option in self.driver.find_elements(*self.COUNTRY_OPTION)
+            ],
+        )
 
     def select_country(self, name):
+        """Выбор страны; stale в списке опций — повтор выбора целиком."""
+        self._retried(f"опция страны «{name}»", lambda: self._select_country_once(name))
+
+    def _select_country_once(self, name):
         self.open_country_list()
         for option in self.driver.find_elements(*self.COUNTRY_OPTION):
             if name in option.text:
@@ -176,7 +231,10 @@ class BasicElementsPage:
         raise ValueError(f"вариант страны не найден: {name}")
 
     def country_button_text(self):
-        return self._element(self.COUNTRY_DROPDOWN).text.strip()
+        return self._retried(
+            self.COUNTRY_DROPDOWN[1],
+            lambda: self._element(self.COUNTRY_DROPDOWN).text.strip(),
+        )
 
     # --- чекбокс и радио ---
 
@@ -194,23 +252,38 @@ class BasicElementsPage:
         )
 
     def terms_checked(self):
-        return self._element(self.TERMS_CHECKBOX).is_selected()
+        return self._retried(
+            self.TERMS_CHECKBOX[1],
+            lambda: self._element(self.TERMS_CHECKBOX).is_selected(),
+        )
 
     def check_terms_via_label(self):
         """Отмечает чекбокс кликом по подписи (повтор по эффекту, TC-006)."""
         self._click_with_effect(self.TERMS_LABEL, lambda driver: self.terms_checked())
 
     def click_newsletter_yes(self):
-        self._element(self.NEWSLETTER_YES).click()
+        self._retried(
+            self.NEWSLETTER_YES[1],
+            lambda: self._element(self.NEWSLETTER_YES).click(),
+        )
 
     def click_newsletter_no(self):
-        self._element(self.NEWSLETTER_NO).click()
+        self._retried(
+            self.NEWSLETTER_NO[1],
+            lambda: self._element(self.NEWSLETTER_NO).click(),
+        )
 
     def newsletter_yes_selected(self):
-        return self._element(self.NEWSLETTER_YES).is_selected()
+        return self._retried(
+            self.NEWSLETTER_YES[1],
+            lambda: self._element(self.NEWSLETTER_YES).is_selected(),
+        )
 
     def newsletter_no_selected(self):
-        return self._element(self.NEWSLETTER_NO).is_selected()
+        return self._retried(
+            self.NEWSLETTER_NO[1],
+            lambda: self._element(self.NEWSLETTER_NO).is_selected(),
+        )
 
     # --- тосты и блок уведомления ---
 
@@ -224,7 +297,10 @@ class BasicElementsPage:
         )
 
     def click_show_notification(self):
-        self._element(self.SHOW_NOTIFICATION).click()
+        self._retried(
+            self.SHOW_NOTIFICATION[1],
+            lambda: self._element(self.SHOW_NOTIFICATION).click(),
+        )
 
     def click_show_notification_and_wait(self):
         """Кликает «Показать уведомление» и ждёт появления блока (с повтором)."""
@@ -237,8 +313,13 @@ class BasicElementsPage:
         return self.wait.until(EC.invisibility_of_element_located(self.NOTIFICATION_HEADING))
 
     def notification_heading_displayed(self):
-        elements = self.driver.find_elements(*self.NOTIFICATION_HEADING)
-        return any(element.is_displayed() for element in elements)
+        return self._retried(
+            "блок уведомления",
+            lambda: any(
+                element.is_displayed()
+                for element in self.driver.find_elements(*self.NOTIFICATION_HEADING)
+            ),
+        )
 
     # --- модальное окно ---
 
@@ -258,11 +339,17 @@ class BasicElementsPage:
         return self.wait.until(lambda driver: not self.modal_is_open())
 
     def open_modal(self):
-        self._element(self.OPEN_MODAL).click()
+        self._retried(
+            self.OPEN_MODAL[1],
+            lambda: self._element(self.OPEN_MODAL).click(),
+        )
         self.wait_modal_open()
 
     def click_modal_content(self):
         """Клик по центру карточки модального окна (внутри, не по фону)."""
+        self._retried("карточка модалки", self._click_modal_content_once)
+
+    def _click_modal_content_once(self):
         overlay = self._visible_overlay()
         card = overlay.find_element(By.CSS_SELECTOR, "div.glass")
         rect = self.driver.execute_script(
@@ -282,18 +369,27 @@ class BasicElementsPage:
         ).click().perform()
 
     def click_backdrop(self):
+        self._retried("фон модалки", self._click_backdrop_once)
+
+    def _click_backdrop_once(self):
         overlay = self._visible_overlay()
         self._click_viewport_point(overlay, 200, 500)
 
     # --- ссылки и состояние ---
 
     def click_external_link(self):
-        self._element(self.EXTERNAL_LINK).click()
+        self._retried(
+            self.EXTERNAL_LINK[1],
+            lambda: self._element(self.EXTERNAL_LINK).click(),
+        )
 
     def error_elements_visible(self):
-        return sum(
-            1 for element in self.driver.find_elements(*self.ERROR_ELEMENT)
-            if element.is_displayed()
+        return self._retried(
+            "элементы ошибок",
+            lambda: sum(
+                1 for element in self.driver.find_elements(*self.ERROR_ELEMENT)
+                if element.is_displayed()
+            ),
         )
 
     def reload(self):
