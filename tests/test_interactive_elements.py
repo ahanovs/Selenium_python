@@ -8,6 +8,7 @@ import time
 
 import allure
 import pytest
+from selenium.webdriver.support.ui import WebDriverWait
 
 from pages.interactive_elements_page import InteractiveElementsPage
 
@@ -41,8 +42,15 @@ class TestInteractiveElements:
             assert page.aria_valuenow() == 100
             assert page.progress_percentage_text() == "100"
         with allure.step("Через секунду значение по-прежнему 100"):
-            time.sleep(1)
-            assert page.aria_valuenow() == 100
+            deadline = time.monotonic() + 1
+
+            def value_stays_100(driver):
+                return time.monotonic() >= deadline and page.aria_valuenow() == 100
+
+            WebDriverWait(driver, 3, poll_frequency=0.2).until(
+                value_stays_100,
+                "через секунду после завершения значение должно остаться 100",
+            )
 
     def test_tc021_start_button_disabled_during_loading(self, driver):
         """TC-021: кнопка «Запустить» неактивна во время загрузки и активна после."""
@@ -118,11 +126,13 @@ class TestInteractiveElements:
         with allure.step("Кликаем кнопку «Скачать тестовый файл»"):
             page.click_file_download()
         with allure.step("Дожидаемся файла в каталоге загрузок (но не дольше 10 секунд)"):
-            end = time.monotonic() + 10
-            while not (os.path.exists(target) and os.path.getsize(target) > 0):
-                if time.monotonic() > end:
-                    pytest.fail(f"файл не скачался: {target}")
-                time.sleep(0.2)
+
+            def file_downloaded(driver):
+                return os.path.exists(target) and os.path.getsize(target) > 0
+
+            WebDriverWait(driver, 10, poll_frequency=0.2).until(
+                file_downloaded, f"файл не скачался за 10 секунд: {target}"
+            )
         with allure.step("Файл cucumber-example.jpg, размер больше 0"):
             assert os.path.getsize(target) > 0
 

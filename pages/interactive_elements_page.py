@@ -120,22 +120,30 @@ class InteractiveElementsPage:
     def click_start_wait_loading(self, timeout=20):
         """Кликает «Запустить» и ловит статус, начинающийся с «Загрузка».
 
-        Загрузка длится ~2 с — окно легко пропустить, поэтому опрос идёт
-        без пауз; если клик не сработал (стенд до гидратации) или загрузка
-        успела завершиться, клик повторяется до общего таймаута.
+        Загрузка длится ~2 с — окно легко пропустить, поэтому статус ловится
+        быстрым поллингом JS-снимка (WebDriverWait с poll 0.05 с — CODEX.md,
+        раздел 8: никаких sleep). Если клик не сработал (стенд до гидратации)
+        или загрузка успела завершиться, клик повторяется до общего таймаута.
         Возвращает снимок в момент «Загрузка…» или None, если не поймали.
         """
         deadline = time.monotonic() + timeout
+
+        def loading_snapshot(driver):
+            snapshot = driver.execute_script(self.STATUS_AND_BUTTON_SNAPSHOT) or {}
+            return (
+                snapshot
+                if snapshot.get("status", "").startswith("Загрузка")
+                else False
+            )
+
         while time.monotonic() < deadline:
             self._element(self.START_BUTTON).click()
-            observe_until = time.monotonic() + 6
-            while time.monotonic() < observe_until:
-                snapshot = self.driver.execute_script(
-                    self.STATUS_AND_BUTTON_SNAPSHOT
-                ) or {}
-                if snapshot.get("status", "").startswith("Загрузка"):
-                    return snapshot
-                time.sleep(0.05)
+            try:
+                return WebDriverWait(
+                    self.driver, 6, poll_frequency=0.05
+                ).until(loading_snapshot)
+            except TimeoutException:
+                continue
         return None
 
     def progress_snapshot(self):
