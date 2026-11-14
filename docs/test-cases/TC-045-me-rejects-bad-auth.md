@@ -13,6 +13,6 @@
 **Ожидаемый результат:**
 401 во всех трёх ветках, разные классы сообщений (замеры 2026-10-22): без токена — «Authentication credentials were not provided.»; мусор — code token_not_valid, «Token is invalid or expired»; refresh вместо access — «Token has wrong type».
 **Приоритет:** High
-**Статус:** Not Executed
+**Статус:** Автоматизирован
 **Примечания:** Замеры 2026-10-22: все три ветки подтверждены.
 ---

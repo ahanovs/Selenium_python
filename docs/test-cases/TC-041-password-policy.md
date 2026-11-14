@@ -9,6 +9,6 @@
 **Ожидаемый результат:**
 Таблица: «a» → 400 «This password is too short. It must contain at least 8 characters.»; «12345678» → 400 «This password is entirely numeric.»; «Similarcheck1» при username «similarcheck» → 400 «The password is too similar to the username.»; техграница «X7a»×1667 (5001 символ) → 201.
 **Приоритет:** High
-**Статус:** Not Executed
+**Статус:** Автоматизирован
 **Примечания:** Замеры 2026-10-22. CommonPassword-валидатора нет («qwerty123» принят) — словарную ветку в кейс не включать. Строки с 400 пользователя не создают; успешную техграницу убрать (DELETE /me).
 ---
